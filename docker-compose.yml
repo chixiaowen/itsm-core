@@ -1,0 +1,69 @@
+# itsm-core 本地编排：PostgreSQL + 应用
+#
+# 用法：
+#   docker compose up -d postgres      # 仅起数据库（配合本地 go run 使用）
+#   docker compose up -d --build       # 起数据库 + 应用（构建镜像）
+#   docker compose down                # 停止并移除容器（保留数据卷）
+#   docker compose down -v             # 停止并移除容器与数据卷
+#
+# 注意：顶层不使用已废弃的 `version:` 字段。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: itsm-core-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: itsm
+      POSTGRES_PASSWORD: itsm
+      POSTGRES_DB: itsm_core
+      # 与应用保持一致的时区
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itsm -d itsm_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - itsm-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 构建阶段 Go 依赖走中国镜像
+        GOPROXY: https://goproxy.cn,direct
+    container_name: itsm-core-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 生产模式（Gin ReleaseMode）——对应配置 app.env
+      ITSM_APP_ENV: production
+      # 双库切换：容器内使用主库 PostgreSQL
+      DB_DRIVER: postgres
+      # 显式 DSN，指向 compose 网络内的 postgres 服务
+      DB_DSN: "host=postgres port=5432 user=itsm password=itsm dbname=itsm_core sslmode=disable TimeZone=UTC"
+      JWT_SECRET: "please-change-me-in-production"
+      LOG_LEVEL: info
+      ITSM_DATABASE_AUTO_MIGRATE: "true"
+      ITSM_DATABASE_SEED: "true"
+    ports:
+      - "8080:8080"
+    networks:
+      - itsm-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  itsm-net:
+    driver: bridge
