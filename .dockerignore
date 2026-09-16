@@ -1,0 +1,41 @@
+# ============================================================
+# itsm-core 后端镜像构建忽略清单
+# ============================================================
+# 后端 Dockerfile 使用 `COPY . .`，若不忽略以下目录，
+# 会把宿主机的 node_modules（数千文件）与构建产物打进镜像层。
+
+# ---- 前端：后端编译不需要，排除重型目录 ----
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# ---- 版本控制与 CI ----
+.git
+.gitignore
+.github
+
+# ---- 文档：不参与编译 ----
+docs
+*.md
+!README.md
+
+# ---- 本地环境与运行时产物 ----
+.env
+.env.local
+data
+bin
+build
+coverage.out
+*.log
+logs
+
+# ---- IDE 与 OS ----
+.idea
+.vscode
+.DS_Store
+
+# ---- 内含独立的 .dockerignore，自身无需进后端上下文 ----
+Dockerfile
+docker-compose.yml
+.dockerignore
+Makefile

@@ -241,15 +241,23 @@ itsm-core/
 │   │   ├── types/                      # 与后端常量对齐的 TS 类型
 │   │   ├── layouts/                    # 三区布局
 │   │   └── views/                      # 各模块 List/Detail/Form 页面
+│   ├── nginx.conf                     # 容器内 nginx：SPA 回落 + /api 反代到 app:8080
+│   ├── Dockerfile                     # 前端镜像（Node 构建 → nginx 托管）
 │   ├── package.json
 │   └── vite.config.ts                 # 开发代理 /api → http://localhost:8080
+├── scripts/                           # 运维脚本
+│   ├── start.sh                       # 一键构建并启动（前后端 + 数据库）
+│   ├── stop.sh                        # 停止（--purge 清数据卷，--vm 关 colima）
+│   ├── status.sh                      # 状态、健康检查与接口探测
+│   └── logs.sh                        # 日志查看
 ├── docs/
 │   ├── PRD.md                         # 产品需求文档
 │   ├── ARCHITECTURE.md                # 系统架构设计（施工图）
 │   ├── TASKS.md                       # 任务分解
 │   └── API.md                         # REST API 参考
-├── docker-compose.yml                 # PostgreSQL + 应用编排
-├── Dockerfile                         # 多阶段构建
+├── docker-compose.yml                 # PostgreSQL + 后端 + 前端 编排
+├── Dockerfile                         # 后端多阶段构建
+├── .dockerignore                      # 后端构建上下文忽略（排除 node_modules 等）
 ├── Makefile                           # 常用开发命令
 ├── .github/workflows/ci.yml           # CI（后端测试 + 前端构建）
 ├── .env.example                       # 环境变量样例
@@ -266,28 +274,96 @@ itsm-core/
 ## 快速开始
 
 > 目标：让一个从没接触过本项目的同学，在 **30 分钟内**跑通后端 API 与前端管理台。
+>
+> 提供两种方式，按需选择：
+> **方式 A（推荐）** —— Docker Compose 一键起齐 PostgreSQL + 后端 + 前端，零本地依赖；
+> **方式 B** —— 本地开发，前后端热重载，适合改代码。
 
 ### 前置要求
 
-| 依赖 | 版本 | 是否必须 |
-| --- | --- | --- |
-| Go | 1.22+（实测 1.22.5） | **必须** |
-| Node.js | 18+（推荐 22） | 必须（跑前端） |
-| npm | 随 Node 附带 | 必须（跑前端） |
-| Docker + docker compose | 任意较新版本 | 可选（仅用于一键起 PostgreSQL） |
-| PostgreSQL | 14+ | 可选（也可用 Docker） |
-| 达梦 DM8 | DM8 | 可选（信创场景） |
+| 依赖 | 版本 | 方式 A | 方式 B |
+| --- | --- | --- | --- |
+| Docker + docker compose | 任意较新版本 | **必须** | 可选（仅用于起 PostgreSQL） |
+| Go | 1.22+（实测 1.22.5） | 不需要 | **必须** |
+| Node.js | 18+（推荐 22） | 不需要 | 必须 |
+| PostgreSQL | 14+ | 容器内自动提供 | 可选（也可用 Docker） |
+| 达梦 DM8 | DM8 | 可选（信创场景） | 可选（信创场景） |
 
 > **没有数据库也能启动**：后端在连不上数据库时会以**降级模式**启动并打印 `WARN`（设计行为，不是故障）。此时 `/healthz` 与静态资源可用，业务接口因无 repo 而不可用。想要完整体验请先起一个 PostgreSQL。
 
-### 第 1 步：获取代码
+---
+
+### 方式 A：Docker Compose 一键启动（推荐）
+
+只需三步。全部依赖封装在容器内，**宿主机无需安装 Go / Node / PostgreSQL**。
+
+#### 第 1 步：获取代码
 
 ```bash
 git clone https://github.com/chixiaowen/itsm-core.git
 cd itsm-core
 ```
 
-### 第 2 步：启动 PostgreSQL（Docker，推荐）
+#### 第 2 步：一键启动
+
+```bash
+./scripts/start.sh
+```
+
+脚本会按顺序完成：检查 Docker（若装了 colima 且未运行会自动拉起）→ 构建前后端镜像 → 按 `healthcheck` 逐级启动 PostgreSQL → 后端 → 前端，并等待三者全部健康后打印访问地址。
+
+可用参数：
+
+| 命令 | 说明 |
+| --- | --- |
+| `./scripts/start.sh` | 构建并启动全部（默认） |
+| `./scripts/start.sh --no-build` | 跳过构建，直接启动已有镜像 |
+| `./scripts/start.sh --rebuild` | 忽略缓存强制重建镜像 |
+| `./scripts/start.sh --api-only` | 只启动 PostgreSQL + 后端 |
+| `./scripts/start.sh --db-only` | 只启动 PostgreSQL（配合方式 B 开发） |
+
+#### 第 3 步：访问
+
+| 入口 | 地址 |
+| --- | --- |
+| **前端管理台** | http://localhost:8081 |
+| 后端 API | http://localhost:8080/api/v1 |
+| 后端健康检查 | http://localhost:8080/healthz |
+| PostgreSQL | `localhost:5432`（用户 `itsm` / 密码 `itsm` / 库 `itsm_core`） |
+
+登录用下方「演示账号」中的任意一个（密码统一 `admin123`）。
+
+#### 配套脚本
+
+| 脚本 | 用途 |
+| --- | --- |
+| `./scripts/start.sh` | 构建并启动全部服务，等待健康后输出访问信息 |
+| `./scripts/stop.sh` | 停止并移除容器（保留数据卷）；`--purge` 连数据卷一起删；`--vm` 顺带关掉 colima |
+| `./scripts/status.sh` | 查看容器状态、健康检查、端口映射与接口连通性探测 |
+| `./scripts/logs.sh [服务] [行数]` | 查看日志，如 `./scripts/logs.sh app 200` |
+
+**端口冲突**：默认 `8081`（前端）/ `8080`（后端）/ `5432`（数据库）。如需修改，在项目根目录建 `.env` 并设置 `FRONTEND_PORT` / `API_PORT` / `POSTGRES_PORT`，或在命令前导出该变量。
+
+**生产环境务必替换 `JWT_SECRET`**（默认值为占位符）：
+
+```bash
+JWT_SECRET="$(openssl rand -hex 32)" ./scripts/start.sh
+```
+
+---
+
+### 方式 B：本地开发（前后端热重载）
+
+适合需要改代码、看热更新的场景。
+
+#### 第 1 步：获取代码
+
+```bash
+git clone https://github.com/chixiaowen/itsm-core.git
+cd itsm-core
+```
+
+#### 第 2 步：启动 PostgreSQL
 
 ```bash
 docker compose up -d postgres
@@ -295,7 +371,7 @@ docker compose up -d postgres
 
 > 若本机没有 Docker，可自行准备一个 PostgreSQL 14+ 实例，然后按下方「配置说明」调整连接参数或设置 `DB_DSN` 环境变量。
 
-### 第 3 步：启动后端
+#### 第 3 步：启动后端
 
 ```bash
 # 环境硬约束（重要）：默认 GOPROXY 不可达，必须使用中国镜像 + 锁定本地工具链
@@ -317,7 +393,7 @@ platform 表迁移完成
 HTTP 服务启动  addr=:8080
 ```
 
-### 第 4 步：启动前端
+#### 第 4 步：启动前端
 
 ```bash
 cd frontend
@@ -327,7 +403,7 @@ npm run dev
 
 前端开发服务器默认运行在 `http://127.0.0.1:5173`，并将 `/api` 代理到后端 `http://localhost:8080`。
 
-### 第 5 步：访问并使用
+#### 第 5 步：访问并使用
 
 - 浏览器打开 **http://127.0.0.1:5173**
 - **演示账号**（开发默认值，密码统一 `admin123`，种子逻辑见 `internal/bootstrap/seed.go`）：

@@ -25,7 +25,7 @@
 **工单管理（Ticket）**
 
 - 工单创建 / 编辑 / 软删除，支持多级分类、优先级（P1~P4）、请求人、来源。
-- 状态机驱动流转（`new → assigned → processing → pending → resolved → closed`，支持 `reopened`），非法流转返回 409。
+- 状态机驱动流转（`draft → new → assigned → in_progress → pending → resolved → closed`，支持 `reopened` 与 `cancelled`），非法流转返回 409。
 - SLA 计时：按优先级匹配策略，输出 `normal / warning / breached`，挂起暂停计时、恢复回补。
 - 公开评论与内部备注时间线、附件上传下载（≤ 20MB）、满意度评价（1~5 星，仅一次）。
 
@@ -88,10 +88,13 @@
 
 **工程化与文档**
 
-- `Makefile` 自文档化常用命令（run / build / test / test-cover / test-race / vet / fmt / lint / tidy / docker-up / docker-down / frontend-*）。
-- 多阶段 `Dockerfile`（非 root 运行）与 `docker-compose.yml`（PostgreSQL + app，含健康检查）。
+- `Makefile` 自文档化常用命令（run / build / test / test-cover / test-race / vet / fmt / lint / tidy / up / up-db / down / down-purge / status / logs / frontend-*）。
+- 后端多阶段 `Dockerfile`（非 root 运行）与 `docker-compose.yml`（PostgreSQL + 后端 + 前端三者编排，均带健康检查与就绪依赖）。
+- **前端容器化**：`frontend/Dockerfile`（Node 构建 → nginx 托管）与 `frontend/nginx.conf`（SPA 路由回落、`/api` 反代到后端、gzip、静态资源长缓存、安全响应头）。
+- **一键启动脚本** `scripts/`：`start.sh`（自动检测 Docker/colima、按健康检查逐级启动、输出访问信息）、`stop.sh`（`--purge` 清数据卷、`--vm` 关 colima）、`status.sh`（状态与接口探测）、`logs.sh`。
+- `.dockerignore`（后端与前端各一份）：排除 `node_modules`、`dist`、`.git` 等，避免污染镜像层与拖慢构建。
 - GitHub Actions CI（后端测试 + 覆盖率、前端构建）。
-- `.golangci.yml`、`.editorconfig`、`.gitignore`、`.env.example`。
+- `.golangci.yml`、`.editorconfig`、`.gitignore`、`.env.example`（含 compose 端口与 `JWT_SECRET` 等变量）。
 - 文档：`README.md`、`CONTRIBUTING.md`、`CHANGELOG.md`、`LICENSE`，以及 `docs/` 下的 PRD、架构设计、任务分解、API 参考。
 - 测试分两层，`go test ./...` 均无需数据库即可全绿：**单元测试**（repository 接口 + 内存 fake，覆盖业务规则）与**端到端测试**（嵌入式 SQLite，覆盖跨模块闭环）。注：达梦 / PostgreSQL 方言级行为未覆盖（见下 Known Issues）。
 

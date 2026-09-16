@@ -1,14 +1,20 @@
-# itsm-core 本地编排：PostgreSQL + 应用
+# itsm-core 本地/单机编排：PostgreSQL + 后端 API + 前端管理台
 #
-# 用法：
-#   docker compose up -d postgres      # 仅起数据库（配合本地 go run 使用）
-#   docker compose up -d --build       # 起数据库 + 应用（构建镜像）
-#   docker compose down                # 停止并移除容器（保留数据卷）
-#   docker compose down -v             # 停止并移除容器与数据卷
+# 用法（详见 scripts/ 下的启动脚本）：
+#   docker compose up -d --build          # 一键起全部三件套（推荐用 scripts/start.sh）
+#   docker compose up -d postgres         # 仅起数据库（配合本地 go run 做后端开发）
+#   docker compose up -d postgres app     # 起数据库 + 后端
+#   docker compose logs -f                # 跟踪日志
+#   docker compose down                   # 停止并移除容器（保留数据卷）
+#   docker compose down -v                # 停止并移除容器与数据卷
+#
+# 端口可用环境变量覆盖（写入同目录 .env 或 export 后执行）：
+#   FRONTEND_PORT（默认 8081）、API_PORT（默认 8080）、POSTGRES_PORT（默认 5432）
 #
 # 注意：顶层不使用已废弃的 `version:` 字段。
 
 services:
+  # ---------------- 数据库 ----------------
   postgres:
     image: postgres:16-alpine
     container_name: itsm-core-postgres
@@ -20,7 +26,7 @@ services:
       # 与应用保持一致的时区
       TZ: UTC
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,6 +38,7 @@ services:
     networks:
       - itsm-net
 
+  # ---------------- 后端 API ----------------
   app:
     build:
       context: .
@@ -39,6 +46,7 @@ services:
       args:
         # 构建阶段 Go 依赖走中国镜像
         GOPROXY: https://goproxy.cn,direct
+    image: itsm-core-backend:latest
     container_name: itsm-core-app
     restart: unless-stopped
     depends_on:
@@ -47,16 +55,45 @@ services:
     environment:
       # 生产模式（Gin ReleaseMode）——对应配置 app.env
       ITSM_APP_ENV: production
-      # 双库切换：容器内使用主库 PostgreSQL
+      # 双库切换：容器内使用主库 PostgreSQL（改为 dameng 并覆盖 DSN 即可切库）
       DB_DRIVER: postgres
       # 显式 DSN，指向 compose 网络内的 postgres 服务
       DB_DSN: "host=postgres port=5432 user=itsm password=itsm dbname=itsm_core sslmode=disable TimeZone=UTC"
-      JWT_SECRET: "please-change-me-in-production"
-      LOG_LEVEL: info
+      # 首次启动自动建表与写入种子数据（含 8 个演示账号）
       ITSM_DATABASE_AUTO_MIGRATE: "true"
       ITSM_DATABASE_SEED: "true"
+      # 生产环境务必替换
+      JWT_SECRET: "${JWT_SECRET:-please-change-me-in-production}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    networks:
+      - itsm-net
+
+  # ---------------- 前端管理台 ----------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # 容器内使用相对路径，由 nginx 反代到 app:8080
+        VITE_API_BASE: /api/v1
+        VITE_APP_TITLE: ITSM-CORE
+        NPM_REGISTRY: "${NPM_REGISTRY:-https://registry.npmmirror.com}"
+    image: itsm-core-frontend:latest
+    container_name: itsm-core-frontend
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
     networks:
       - itsm-net
 

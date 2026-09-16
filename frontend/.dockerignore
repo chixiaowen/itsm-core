@@ -1,0 +1,12 @@
+# itsm-core 前端 Docker 构建忽略清单
+# 目的：缩小构建上下文，避免把宿主的 node_modules / 产物打进镜像层
+
+node_modules
+dist
+.vite
+*.log
+.DS_Store
+.env
+.env.local
+.env.*.local
+coverage

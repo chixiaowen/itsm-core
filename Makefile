@@ -16,7 +16,7 @@ NPM ?= npm
 
 .PHONY: help run build test test-cover test-race vet fmt lint tidy \
         frontend-install frontend-dev frontend-build frontend \
-        docker-up docker-down clean
+        up up-db down down-purge status logs clean
 
 help: ## 显示可用目标（默认目标）
 	@echo "itsm-core 常用命令："
@@ -68,11 +68,23 @@ frontend-build: ## 构建前端产物到 frontend/dist
 frontend: ## 前端安装依赖 + 构建（CI 约定：npm ci）
 	cd frontend && $(NPM) ci && $(NPM) run build
 
-docker-up: ## 启动 compose（构建并后台运行 postgres + app）
-	docker compose up -d --build
+up: ## 一键构建并启动全部（PostgreSQL + 后端 + 前端）—— 推荐
+	./scripts/start.sh
 
-docker-down: ## 停止 compose（保留数据卷）
-	docker compose down
+up-db: ## 仅启动 PostgreSQL（配合本地 go run 开发）
+	./scripts/start.sh --db-only
+
+down: ## 停止全部服务（保留数据库数据卷）
+	./scripts/stop.sh
+
+down-purge: ## 停止全部服务并删除数据卷（清空数据库，谨慎）
+	./scripts/stop.sh --purge
+
+status: ## 查看服务状态、健康检查与接口探测
+	./scripts/status.sh
+
+logs: ## 跟踪全部服务日志（make logs S=app 可指定服务）
+	docker compose logs -f $(S)
 
 clean: ## 清理构建产物
 	rm -rf bin coverage.out
