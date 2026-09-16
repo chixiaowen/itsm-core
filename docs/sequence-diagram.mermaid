@@ -1,0 +1,116 @@
+%% itsm-core 关键时序图（与 docs/ARCHITECTURE.md §13 同步）
+%% 共三张：工单创建到关闭（含 SLA） / 变更申请到 CAB 审批通过 / 事件升级
+
+sequenceDiagram
+    autonumber
+    actor U as 请求人(requestor)
+    participant FE as 前端 SPA
+    participant H as TicketHandler
+    participant S as TicketService
+    participant SLA as pkg/sla
+    participant R as TicketRepo(GORM)
+    participant A as AuditRepo
+    participant DB as 数据库
+
+    U->>FE: 填写标题/描述/分类并提交
+    FE->>H: POST /api/v1/tickets
+    H->>S: Create(actor, dto)
+    S->>S: 校验必填 + 取默认优先级P4
+    S->>SLA: Evaluate(policy, createdAt, now)
+    SLA-->>S: response_due_at / resolve_due_at
+    S->>R: Insert(ticket)
+    R->>DB: INSERT INTO tickets
+    S->>A: Append(create)
+    S-->>H: Ticket(code=TKT-YYYYMMDD-0001)
+    H-->>FE: 201 {code,data}
+    Note over U,DB: —— 指派 ——
+    FE->>H: POST /tickets/{id}/assign {assignee_id}
+    H->>S: Transition(action=assign)
+    S->>S: machine.Resolve(new, assign) -> assigned
+    S->>R: Update(status=assigned)
+    S->>A: Append(transition new->assigned)
+    Note over U,DB: —— 挂起/恢复(暂停SLA) ——
+    FE->>H: POST /tickets/{id}/transition {action:pending, reason}
+    H->>S: Transition(pending)
+    S->>R: Update(status=pending, paused_at=now)
+    FE->>H: POST /tickets/{id}/transition {action:resume}
+    S->>S: paused_minutes += now - paused_at，resolve_due_at 回补
+    S->>R: Update(status=in_progress)
+    Note over U,DB: —— 解决+关闭 ——
+    FE->>H: POST /tickets/{id}/transition {action:resolve, solution}
+    H->>S: Transition(resolve)
+    S->>S: guardSolution 通过
+    S->>R: Update(status=resolved, resolved_at=now)
+    FE->>H: POST /tickets/{id}/transition {action:close}
+    S->>S: machine.Resolve(resolved, close) -> closed
+    S->>R: Update(status=closed, closed_at=now)
+    S->>A: Append(transition resolved->closed)
+    S-->>H: Ticket
+    H-->>FE: 200 {sla_status}
+
+sequenceDiagram
+    autonumber
+    actor E as 工程师(requester)
+    actor CM as 变更经理(change_manager)
+    participant H as ChangeHandler
+    participant S as ChangeService
+    participant M as change.machine
+    participant R as ChangeRepo(GORM)
+    participant A as AuditRepo
+
+    E->>H: POST /api/v1/changes {title,type=normal,risk=high}
+    H->>S: Create
+    S->>R: Insert(status=draft)
+    H-->>E: 201 CHG-...（draft）
+    E->>H: POST /changes/{id}/transition {action:submit_assessment}
+    H->>S: Transition
+    S->>M: Resolve(draft, submit_assessment) -> assessment
+    S->>R: Update(status=assessment)
+    E->>H: PUT /changes/{id} {impact,plan,rollback_plan,window}
+    H->>S: Update（仅 draft/assessment 可改）
+    S->>R: Update
+    E->>H: POST /changes/{id}/transition {action:submit_approval}
+    H->>S: Transition
+    S->>S: guard plan & rollback_plan 非空
+    S->>M: Resolve(assessment, submit_approval) -> pending_approval
+    S->>R: Update(status=pending_approval)
+    Note over S,R: 按风险等级预置 2 名审批人（高风险）
+    CM->>H: POST /changes/{id}/approvals {decision:approved, comment}
+    H->>S: Approve
+    S->>R: Upsert(ChangeApproval)
+    S->>S: EvaluateApprovals(会签: 全部通过?)
+    alt 全部审批人通过
+        S->>M: Resolve(pending_approval, approve) -> approved
+        S->>R: Update(status=approved)
+        S->>A: Append(approved)
+    else 任一驳回
+        S->>R: Update(status=rejected)
+    end
+    S-->>H: Change
+    H-->>CM: 200 审批结果
+
+sequenceDiagram
+    autonumber
+    actor AG as 坐席/工程师
+    participant H as IncidentHandler
+    participant S as IncidentService
+    participant M as incident.machine
+    participant R as IncidentRepo
+    participant ER as EscalationRepo
+    participant A as AuditRepo
+
+    AG->>H: POST /api/v1/incidents/{id}/escalate {type:hierarchical, reason, to_assignee_id}
+    H->>S: Escalate
+    S->>R: Get(incident)
+    S->>S: 校验 escalation_level+1 不越级(否则409) + reason 非空
+    S->>M: Resolve(in_progress, escalate) -> escalated
+    S->>R: Update(status=escalated, escalation_level+1)
+    S->>ER: Insert(IncidentEscalation{level,type,reason,from,to})
+    S->>A: Append(escalate)
+    S-->>H: Incident(escalation_level=2)
+    H-->>AG: 200
+    Note over AG,R: 升级后接手
+    AG->>H: POST /incidents/{id}/transition {action:take_over, assignee_id}
+    H->>S: Transition
+    S->>M: Resolve(escalated, take_over) -> in_progress
+    S->>R: Update(status=in_progress, assignee_id)

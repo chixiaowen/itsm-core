@@ -1,0 +1,284 @@
+classDiagram
+    direction LR
+
+    class User {
+        +uint64 ID
+        +string Username
+        +string DisplayName
+        +string Role
+        +string PasswordHash
+        +string Status
+    }
+
+    class SLAPolicy {
+        +uint64 ID
+        +string Name
+        +string Priority
+        +int ResponseMinutes
+        +int ResolveMinutes
+        +bool PauseOnPending
+    }
+
+    class AuditLog {
+        +uint64 ID
+        +uint64 ActorID
+        +string Action
+        +string BizType
+        +uint64 BizID
+        +string FromStatus
+        +string ToStatus
+        +string ClientIP
+    }
+
+    class Comment {
+        +uint64 ID
+        +string BizType
+        +uint64 BizID
+        +uint64 AuthorID
+        +string Content
+        +bool IsInternal
+    }
+
+    class Attachment {
+        +uint64 ID
+        +string BizType
+        +uint64 BizID
+        +string Filename
+        +string FilePath
+        +uint64 UploaderID
+    }
+
+    class Ticket {
+        +uint64 ID
+        +string Code
+        +string Title
+        +string Status
+        +string Priority
+        +uint64 RequesterID
+        +uint64 AssigneeID
+        +uint64 ServiceItemID
+        +int PausedMinutes
+        +Timestamp ResponseDueAt
+        +Timestamp ResolveDueAt
+        +Timestamp ResolvedAt
+        +Timestamp ClosedAt
+        +int Rating
+        +Create(actor, dto) Ticket
+        +Transition(actor, action, params) Ticket
+        +Assign(actor, assigneeID) Ticket
+        +Rate(actor, rating, comment) Ticket
+    }
+
+    class TicketCategory {
+        +uint64 ID
+        +string Name
+        +uint64 ParentID
+        +int SortOrder
+    }
+
+    class TicketCI {
+        +uint64 TicketID
+        +uint64 CIID
+    }
+
+    class Incident {
+        +uint64 ID
+        +string Code
+        +string Status
+        +string Impact
+        +string Urgency
+        +string Priority
+        +bool PriorityOverridden
+        +int EscalationLevel
+        +uint64 ReporterID
+        +uint64 AssigneeID
+        +uint64 ProblemID
+        +uint64 TicketID
+        +Report(actor, dto) Incident
+        +Escalate(actor, type, reason) Incident
+        +ConvertToTicket(actor) Ticket
+        +Transition(actor, action, params) Incident
+    }
+
+    class IncidentEscalation {
+        +uint64 ID
+        +uint64 IncidentID
+        +int Level
+        +string Type
+        +string Reason
+        +uint64 ActorID
+    }
+
+    class IncidentCI {
+        +uint64 IncidentID
+        +uint64 CIID
+    }
+
+    class Problem {
+        +uint64 ID
+        +string Code
+        +string Status
+        +string Source
+        +string RootCause
+        +string Workaround
+        +string NoChangeReason
+        +uint64 AssigneeID
+        +Create(actor, dto) Problem
+        +MarkKnownError(actor, rc, wa) Problem
+        +Transition(actor, action, params) Problem
+    }
+
+    class ProblemChange {
+        +uint64 ProblemID
+        +uint64 ChangeID
+    }
+
+    class Change {
+        +uint64 ID
+        +string Code
+        +string ChangeType
+        +string Status
+        +string RiskLevel
+        +string Plan
+        +string RollbackPlan
+        +uint64 RequesterID
+        +Timestamp WindowStart
+        +Timestamp WindowEnd
+        +Create(actor, dto) Change
+        +Transition(actor, action, params) Change
+        +Approve(actor, decision, comment) Change
+    }
+
+    class ChangeApproval {
+        +uint64 ID
+        +uint64 ChangeID
+        +uint64 ApproverID
+        +string Decision
+        +string Comment
+    }
+
+    class ServiceCategory {
+        +uint64 ID
+        +string Name
+        +uint64 ParentID
+        +int SortOrder
+    }
+
+    class ServiceItem {
+        +uint64 ID
+        +string Name
+        +string Status
+        +uint64 CategoryID
+        +uint64 SLAPolicyID
+        +bool RequiresApproval
+        +string FormSchema
+        +Publish(actor) ServiceItem
+        +Offline(actor) ServiceItem
+    }
+
+    class CI {
+        +uint64 ID
+        +string Code
+        +string Name
+        +string CIType
+        +string Status
+        +string Attrs
+        +uint64 OwnerID
+        +Topology(depth) Graph
+    }
+
+    class CIRelation {
+        +uint64 ID
+        +uint64 SourceCIID
+        +uint64 TargetCIID
+        +string RelationType
+    }
+
+    class Asset {
+        +uint64 ID
+        +string AssetNo
+        +string Name
+        +string Category
+        +string Status
+        +uint64 CIID
+        +uint64 UserID
+        +Transition(actor, action, params) Asset
+        +BindCI(actor, ciID) Asset
+    }
+
+    class AssetHistory {
+        +uint64 ID
+        +uint64 AssetID
+        +string FromStatus
+        +string ToStatus
+        +uint64 ActorID
+    }
+
+    class StateMachine {
+        <<kernel>>
+        +Resolve(from, action) Transition
+        +Allows(role) bool
+    }
+
+    class SLACalculator {
+        <<kernel>>
+        +Due(start, minutes) Timestamp
+        +Elapsed(start, end, now, paused) Duration
+        +StatusOf(start, target, end, now, paused) Status
+        +Evaluate(policy, start, now, resp, resolved, paused) View
+    }
+
+    class TicketRepository {
+        <<interface>>
+        +Create(ctx, ticket) error
+        +Get(ctx, id) Ticket
+        +Update(ctx, ticket) error
+        +List(ctx, filter, page) PageResult
+    }
+
+    class IncidentRepository {
+        <<interface>>
+        +Create(ctx, incident) error
+        +Get(ctx, id) Incident
+        +Update(ctx, incident) error
+        +List(ctx, filter, page) PageResult
+    }
+
+    User "1" --> "0..*" Ticket : requester
+    User "1" --> "0..*" Ticket : assignee
+    User "1" --> "0..*" Comment : author
+    User "1" --> "0..*" Attachment : uploader
+    TicketCategory "1" --> "0..*" Ticket : classifies
+    TicketCategory "1" --> "0..*" TicketCategory : parent
+    ServiceCategory "1" --> "0..*" ServiceItem : contains
+    ServiceCategory "1" --> "0..*" ServiceCategory : parent
+    ServiceItem "1" --> "0..*" Ticket : orderCreates
+    SLAPolicy "1" --> "0..*" Ticket : constrains
+    SLAPolicy "1" --> "0..*" Incident : constrains
+    SLAPolicy "1" --> "0..*" ServiceItem : defaultPolicy
+    Ticket "1" --> "0..*" Comment : owns
+    Incident "1" --> "0..*" Comment : owns
+    Problem "1" --> "0..*" Comment : owns
+    Change "1" --> "0..*" Comment : owns
+    Ticket "1" --> "0..*" Attachment : owns
+    Problem "1" --> "0..*" Incident : aggregates
+    Incident "0..1" --> "0..1" Ticket : convertsTo
+    Problem "0..*" --> "0..*" Change : resolvedBy
+    Change "1" --> "0..*" ChangeApproval : cabApproval
+    CI "0..1" --> "0..1" Asset : boundBy
+    CI "1" --> "0..*" CIRelation : source
+    CI "1" --> "0..*" CIRelation : target
+    Ticket "0..*" --> "0..*" CI : affectedBy
+    Incident "0..*" --> "0..*" CI : affectedBy
+    Incident "1" --> "0..*" IncidentEscalation : escalationHistory
+    Asset "1" --> "0..*" AssetHistory : lifecycleHistory
+    Ticket ..> TicketRepository : uses
+    Incident ..> IncidentRepository : uses
+    Ticket ..> StateMachine : validates
+    Incident ..> StateMachine : validates
+    Change ..> StateMachine : validates
+    Problem ..> StateMachine : validates
+    Asset ..> StateMachine : validates
+    Ticket ..> SLACalculator : computes
+    Incident ..> SLACalculator : computes
+    AuditLog ..> Ticket : records
