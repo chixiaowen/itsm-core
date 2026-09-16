@@ -1,0 +1,55 @@
+# itsm-core 应用配置（ARCHITECTURE §9.1）
+# 环境变量优先级高于本文件；支持 ITSM_ 前缀（ITSM_DATABASE_DRIVER）
+# 以及直读变量 DB_DRIVER / DB_DSN / JWT_SECRET / LOG_LEVEL。
+
+app:
+  name: itsm-core
+  env: development          # development|production
+  http_addr: ":8080"
+  request_timeout_seconds: 30
+  max_upload_mb: 20
+  upload_dir: "./data/uploads"
+
+log:
+  level: info               # debug|info|warn|error
+  format: console           # console|json
+  output: stdout            # stdout|stderr|文件路径
+
+database:
+  driver: postgres          # postgres|dameng   ← DB_DRIVER 可覆盖
+  dsn: ""                   # 非空时直接使用，覆盖下方分库拼接
+  postgres:
+    host: 127.0.0.1
+    port: 5432
+    user: itsm
+    password: itsm
+    dbname: itsm_core
+    sslmode: disable
+    timezone: UTC
+    max_open_conns: 50
+    max_idle_conns: 10
+    conn_max_lifetime_minutes: 60
+  dameng:
+    host: 127.0.0.1
+    port: 5236
+    user: SYSDBA
+    password: SYSDBA
+    schema: SYSDBA
+    varchar_size_is_char: true
+  auto_migrate: true
+  seed: true
+  disable_ping: false        # true 时跳过启动探活（受限网络/启动即降级）
+
+auth:
+  jwt_secret: "change-me-in-production"
+  jwt_ttl_hours: 24
+  login_max_attempts: 5       # P1
+  login_lock_minutes: 10      # P1
+
+change:
+  enforce_window: false        # 窗口外实施是否强制拒绝（REQ-CHG-006）
+  emergency_needs_confirm: true
+
+cors:
+  allowed_origins:
+    - "http://localhost:5173"

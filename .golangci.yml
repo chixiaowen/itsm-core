@@ -1,0 +1,74 @@
+# golangci-lint 配置（面向 v1）
+# 文档：https://golangci-lint.run/usage/configuration/
+#
+# 运行：golangci-lint run
+# 说明：CI 与本地开发均建议使用本配置；无 golangci-lint 时可退回 `make vet`（go vet）。
+
+run:
+  timeout: 5m
+  tests: true
+  # 仅检查 go 1.22 语法
+  go: "1.22"
+  skip-dirs:
+    - frontend
+    - docs
+  skip-files:
+    - ".*_test\\.go$"
+
+linters:
+  disable-all: true
+  enable:
+    - govet        # 官方 vet 检查
+    - errcheck     # 未处理的 error
+    - staticcheck  # 静态分析（含 gosimple 语义，SA 系列）
+    - ineffassign  # 无效赋值
+    - unused       # 未使用的标识符
+    - gosimple     # 可简化的代码
+    - gocritic     # 经验型检查
+    - revive       # 风格检查（golint 继任者）
+    - misspell     # 拼写检查
+    - gofmt        # 格式
+    - goimports    # import 排序与分组
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment   # 结构体字段对齐非强制要求
+  errcheck:
+    check-type-assertions: true
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+  revive:
+    rules:
+      - name: exported
+        disabled: true    # 不强制为每个导出符号写注释（由评审保证）
+      - name: package-comments
+        disabled: false
+  misspell:
+    locale: US
+  goimports:
+    local-prefixes: github.com/chixiaowen/itsm-core
+
+issues:
+  # 默认每个 linter 的最大输出条数
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-use-default: false
+  # 测试文件放宽部分规则
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocritic
+        - revive
+        - unused
+        - staticcheck
+    # 生成/骨架文件可放宽
+    - path: _test\.go
+      text: "unused-parameter"
+      linters:
+        - revive

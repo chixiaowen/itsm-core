@@ -1,0 +1,63 @@
+# EditorConfig —— https://editorconfig.org
+# 编辑器统一约定：itsm-core 全仓适用
+
+root = true
+
+# ---------- 通用 ----------
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# ---------- Go ----------
+[*.go]
+indent_style = tab
+indent_size = 4
+insert_final_newline = true
+
+# ---------- Markdown ----------
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+# ---------- YAML ----------
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# ---------- JSON ----------
+[*.json]
+indent_style = space
+indent_size = 2
+
+# ---------- TypeScript / JavaScript ----------
+[*.{ts,tsx,js,jsx,mjs,cjs}]
+indent_style = space
+indent_size = 2
+
+# ---------- Vue ----------
+[*.vue]
+indent_style = space
+indent_size = 2
+
+# ---------- HTML / CSS ----------
+[*.{html,css,scss}]
+indent_style = space
+indent_size = 2
+
+# ---------- Makefile ----------
+[Makefile]
+indent_style = tab
+
+# ---------- Docker ----------
+[Dockerfile*]
+indent_style = space
+indent_size = 4
+
+# ---------- Shell ----------
+[*.sh]
+indent_style = space
+indent_size = 2
